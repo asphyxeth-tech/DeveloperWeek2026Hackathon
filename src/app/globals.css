@@ -1,26 +1,42 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #07070d;
+  --foreground: #f1f2f6;
+  --muted: #8b8fa0;
+  --muted-strong: #b8bdc9;
+  --accent: #a78bfa;
+  --accent-glow: #c4b5fd;
+  --border: #1f1f2e;
+  --surface: #11111c;
+  --surface-2: #181826;
+  --danger: #f87171;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-strong: var(--muted-strong);
+  --color-accent: var(--accent);
+  --color-accent-glow: var(--accent-glow);
+  --color-border: var(--border);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+}
+
+.ghost-bg {
+  background-image:
+    radial-gradient(ellipse 900px 600px at 50% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+    radial-gradient(ellipse 700px 500px at 90% 110%, color-mix(in srgb, var(--accent-glow) 10%, transparent), transparent 70%),
+    radial-gradient(ellipse 600px 500px at 0% 80%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%);
 }
