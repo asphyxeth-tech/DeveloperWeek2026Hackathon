@@ -67,7 +67,7 @@ export class TowerError extends Error {
 
 export function getTowerConfig(): TowerConfig {
   const apiKey = process.env.TOWER_API_KEY;
-  const appName = process.env.TOWER_APP_NAME || "ghost-reviews-pipeline";
+  const appName = process.env.TOWER_APP_NAME || "ghost-reviews";
   if (!apiKey) {
     throw new TowerError(
       "TOWER_API_KEY is not set in the server environment.",
