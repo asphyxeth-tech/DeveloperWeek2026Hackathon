@@ -62,8 +62,8 @@ tower secrets create ANTHROPIC_API_KEY --value "sk-ant-..."
 tower run --parameter business_url=https://maps.app.goo.gl/example
 
 # Inspect:
-tower apps show ghost-reviews-pipeline
-tower apps logs ghost-reviews-pipeline
+tower apps show ghost-reviews
+tower apps logs ghost-reviews
 ```
 
 ## File layout
@@ -84,7 +84,7 @@ The Python `SYSTEM_PROMPT` and `ANALYSIS_REPORT_SCHEMA` mirror the TypeScript ve
 
 The Next.js app's **"Deep scan via Tower"** button invokes this pipeline via Tower's Control Plane API. Flow:
 
-1. `POST /api/analyze-tower` triggers a run via `POST https://api.tower.dev/v1/apps/ghost-reviews-pipeline/runs`
+1. `POST /api/analyze-tower` triggers a run via `POST https://api.tower.dev/v1/apps/ghost-reviews/runs`
 2. Browser polls `GET /api/analyze-tower/[runSeq]` every ~2.5s
 3. Each poll calls Tower's `GET /apps/.../runs/{seq}` for status and (once terminal) `GET /apps/.../runs/{seq}/logs` for stdout
 4. The TS side scans the log lines for the `__GHOST_RESULT__:{...}` sentinel emitted by `task.py` and parses the embedded JSON
@@ -92,7 +92,7 @@ The Next.js app's **"Deep scan via Tower"** button invokes this pipeline via Tow
 The integration requires the following env vars on the Next.js side (set in Vercel for production):
 
 - `TOWER_API_KEY` — your Tower API key (get one at https://app.tower.dev → team settings → API Keys)
-- `TOWER_APP_NAME` — defaults to `ghost-reviews-pipeline` (matches `[app].name` in the Towerfile)
+- `TOWER_APP_NAME` — defaults to `ghost-reviews` (matches `[app].name` in the Towerfile)
 
 ## Roadmap
 

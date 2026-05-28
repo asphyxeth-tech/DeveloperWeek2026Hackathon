@@ -1,7 +1,7 @@
 /**
  * POST /api/analyze-tower
  *
- * Triggers a Tower run of the ghost-reviews-pipeline app for the given
+ * Triggers a Tower run of the ghost-reviews app for the given
  * business URL. Returns the run's sequence number immediately. The browser
  * is expected to poll GET /api/analyze-tower/{runSeq} until the run reaches
  * a terminal status and the parsed AnalyzeResponse is returned.
