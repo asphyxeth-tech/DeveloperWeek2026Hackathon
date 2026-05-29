@@ -35,6 +35,11 @@ export const AnalyzeResponseSchema = z.object({
   mode: z.enum(["stub", "live"]),
   business_url: z.string(),
   generated_at: z.string(),
+  // "nimble" when reviews were scraped live, "mock" when we fell back to
+  // the bundled sample dataset (no NIMBLE_API_KEY or the upstream failed).
+  // Zod .parse() strips unknown keys, so this field must live on the
+  // schema or it disappears from the response payload.
+  reviews_source: z.enum(["nimble", "mock"]),
   report: AnalysisReportSchema,
 });
 export type AnalyzeResponse = z.infer<typeof AnalyzeResponseSchema>;

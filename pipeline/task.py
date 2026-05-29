@@ -27,11 +27,20 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import anthropic
 
 HERE = Path(__file__).resolve().parent
+
+# Nimble's structured Google-reviews scrape (v1 SERP surface). We send a
+# small JSON body asking for the `google_maps_reviews` parser and trust
+# Nimble to deliver a structured payload. Auth is HTTP Basic using the
+# raw API key string as the credential.
+NIMBLE_ENDPOINT = "https://api.webit.live/api/v1/realtime/serp"
+NIMBLE_TIMEOUT_SECONDS = 6
 
 SYSTEM_PROMPT = """You are a forensic analyst specializing in detecting coordinated review-bombing attacks on local businesses' Google Business Profiles. Your job is to examine a batch of public Google reviews and surface signals of fraudulent or coordinated activity to the business owner.
 
@@ -149,6 +158,138 @@ def get_business_url() -> str:
     ).strip()
 
 
+def fetch_reviews_via_nimble(business_url: str) -> list[dict] | None:
+    """Pull recent Google reviews for the given business URL via Nimble.
+
+    Mirrors the gating semantics of `fetchReviewsViaNimble` in
+    src/app/api/analyze/route.ts. Returns None (and never raises) when:
+        - NIMBLE_API_KEY is unset
+        - the HTTP request times out
+        - the upstream returns non-2xx
+        - the response body cannot be parsed as JSON
+        - the response shape doesn't contain a usable review list
+
+    Uses urllib so we don't take on a new dependency (requirements.txt
+    stays at just `anthropic`). The caller falls back to the bundled
+    mock reviews on None.
+    """
+    api_key = os.environ.get("NIMBLE_API_KEY")
+    if not api_key:
+        return None
+
+    payload = json.dumps(
+        {
+            "url": business_url,
+            "parser": "google_maps_reviews",
+            "country": "US",
+            "locale": "en",
+        }
+    ).encode("utf-8")
+
+    req = urllib.request.Request(
+        NIMBLE_ENDPOINT,
+        data=payload,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            # Nimble's v1 SERP surface accepts the raw API key as the
+            # Basic-auth credential. May be refined when we exercise it
+            # against a real key.
+            "Authorization": f"Basic {api_key}",
+        },
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=NIMBLE_TIMEOUT_SECONDS) as resp:
+            if resp.status < 200 or resp.status >= 300:
+                return None
+            body = resp.read()
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
+        return None
+
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    # Same hierarchy of likely locations as the TS side.
+    candidates: list[list] = []
+    if isinstance(data.get("reviews"), list):
+        candidates.append(data["reviews"])
+    parsing = data.get("parsing")
+    if isinstance(parsing, dict):
+        if isinstance(parsing.get("entities"), list):
+            candidates.append(parsing["entities"])
+        if isinstance(parsing.get("reviews"), list):
+            candidates.append(parsing["reviews"])
+    inner = data.get("data")
+    if isinstance(inner, dict) and isinstance(inner.get("reviews"), list):
+        candidates.append(inner["reviews"])
+
+    raw_reviews = next((c for c in candidates if c), None)
+    if not raw_reviews:
+        return None
+
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    normalized: list[dict] = []
+    for index, raw in enumerate(raw_reviews):
+        if not isinstance(raw, dict):
+            raw = {}
+        rating_raw = raw.get("rating", raw.get("stars", 1))
+        try:
+            rating = int(round(float(rating_raw)))
+        except (TypeError, ValueError):
+            rating = 1
+        rating = max(1, min(5, rating))
+
+        reviewer_name = (
+            raw.get("reviewer_name")
+            or raw.get("author")
+            or raw.get("name")
+            or "Anonymous"
+        )
+        if not isinstance(reviewer_name, str):
+            reviewer_name = "Anonymous"
+
+        total = raw.get("reviewer_total_reviews")
+        if not isinstance(total, int):
+            total = raw.get("author_reviews_count")
+        if not isinstance(total, int):
+            total = 0
+
+        posted_at = (
+            raw.get("posted_at")
+            or raw.get("date")
+            or raw.get("published_at")
+            or now_iso
+        )
+        if not isinstance(posted_at, str):
+            posted_at = now_iso
+
+        text = raw.get("text") or raw.get("snippet") or raw.get("review") or ""
+        if not isinstance(text, str):
+            text = ""
+
+        normalized.append(
+            {
+                "id": f"nimble-{index}",
+                "reviewer_name": reviewer_name,
+                "reviewer_total_reviews": total,
+                "rating": rating,
+                "posted_at": posted_at,
+                "text": text,
+            }
+        )
+
+    return normalized if normalized else None
+
+
 def load_mock_reviews() -> list[dict]:
     with (HERE / "mock_reviews.json").open(encoding="utf-8") as f:
         return json.load(f)
@@ -211,12 +352,19 @@ def main() -> int:
         )
         return 1
 
-    reviews = load_mock_reviews()
+    # Reviews come from Nimble when a key is configured, otherwise from
+    # the bundled mock_reviews.json. Tracked so the sentinel JSON tells
+    # the web app which source produced the report.
+    live_reviews = fetch_reviews_via_nimble(business_url)
+    reviews = live_reviews if live_reviews is not None else load_mock_reviews()
+    reviews_source = "nimble" if live_reviews is not None else "mock"
+
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     mode = "live" if has_key else "stub"
 
     print(
         f"[ghost.reviews pipeline] mode={mode} "
+        f"reviews_source={reviews_source} "
         f"business_url={business_url} reviews={len(reviews)}",
         file=sys.stderr,
     )
@@ -229,6 +377,7 @@ def main() -> int:
     output = {
         "mode": mode,
         "business_url": business_url,
+        "reviews_source": reviews_source,
         "report": report,
     }
 

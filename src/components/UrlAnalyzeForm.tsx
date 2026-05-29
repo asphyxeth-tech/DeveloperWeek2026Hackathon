@@ -214,10 +214,15 @@ export function UrlAnalyzeForm() {
             value={url}
             onChange={(e) => {
               setUrl(e.target.value);
-              if (showError) {
+              // Reset state when the user edits the URL after either an
+              // error OR a successful result — otherwise the stale report
+              // hangs around while they're typing a new URL to scan.
+              if (showError || showResult) {
                 setErrorMessage("");
+                setResult(null);
                 setDirectPhase("idle");
                 setTowerPhase("idle");
+                setTower(null);
               }
             }}
             placeholder="Paste your Google Business Profile URL"
